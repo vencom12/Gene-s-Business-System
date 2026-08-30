@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Header } from './components/layout/Header';
@@ -59,6 +60,7 @@ export function App() {
           <MainContent />
           <MobileTabBar />
         </div>
+        <SpeedInsights />
       </AppProvider>
     </ErrorBoundary>
   );
