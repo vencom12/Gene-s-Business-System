@@ -6,10 +6,9 @@ import {
   Copy,
   Check,
   Plus,
+  Minus,
   Sparkles,
   Printer,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import type { Recipe } from '../../types/recipe';
 import { useApp } from '../../context/AppContext';
@@ -24,6 +23,71 @@ import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import confetti from 'canvas-confetti';
+
+interface StepperProps {
+  label: string;
+  sublabel?: string;
+  value: string;
+  onChange: (val: string) => void;
+  onStepDown: () => void;
+  onStepUp: () => void;
+  suffix: string;
+  placeholder?: string;
+}
+
+const StepperControl: React.FC<StepperProps> = ({
+  label,
+  sublabel,
+  value,
+  onChange,
+  onStepDown,
+  onStepUp,
+  suffix,
+  placeholder,
+}) => (
+  <div className="flex flex-col gap-1">
+    <div className="flex items-center justify-between text-xs">
+      <span className="font-semibold text-slate-700">{label}</span>
+      {sublabel && <span className="text-[10px] text-amber-700 font-medium">{sublabel}</span>}
+    </div>
+
+    <div className="flex items-center rounded-xl border border-slate-300 bg-white hover:border-amber-400 focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-amber-500 transition-all shadow-2xs overflow-hidden h-9">
+      <button
+        type="button"
+        onClick={onStepDown}
+        className="h-full px-2.5 flex items-center justify-center text-slate-600 hover:text-amber-800 hover:bg-amber-100 active:bg-amber-200 transition-colors border-r border-slate-200 cursor-pointer select-none"
+        title={`Decrease ${label}`}
+        aria-label={`Decrease ${label}`}
+      >
+        <Minus size={14} className="stroke-[2.5]" />
+      </button>
+
+      <div className="relative flex-1 flex items-center justify-center min-w-0 px-1">
+        <input
+          type="number"
+          step="any"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full text-center text-xs sm:text-sm font-bold text-slate-800 bg-transparent py-1 px-1 focus:outline-none no-spinner"
+        />
+        <span className="text-[10px] text-slate-400 font-semibold pr-1.5 select-none pointer-events-none whitespace-nowrap shrink-0">
+          {suffix}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={onStepUp}
+        className="h-full px-2.5 flex items-center justify-center text-slate-600 hover:text-amber-800 hover:bg-amber-100 active:bg-amber-200 transition-colors border-l border-slate-200 cursor-pointer select-none"
+        title={`Increase ${label}`}
+        aria-label={`Increase ${label}`}
+      >
+        <Plus size={14} className="stroke-[2.5]" />
+      </button>
+    </div>
+  </div>
+);
 
 interface PortionRatioScalerModalProps {
   recipe: Recipe | null;
@@ -48,9 +112,10 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
   const [customServingsInput, setCustomServingsInput] = useState<string>(baseYield.toString());
   const [customMultiplier, setCustomMultiplier] = useState<string>('1.0');
   const [targetGramsInput, setTargetGramsInput] = useState<string>('');
+  const [packagingStrategy, setPackagingStrategy] = useState<'individual' | 'shared' | 'auto'>('individual');
+  const [packagingOverrides, setPackagingOverrides] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
-  const [showPackagingDetails, setShowPackagingDetails] = useState(false);
 
   // Sync state whenever recipe changes
   React.useEffect(() => {
@@ -59,6 +124,8 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
       setTargetServings(initialServings);
       setCustomServingsInput(initialServings.toString());
       setCustomMultiplier('1.0');
+      setPackagingStrategy('individual');
+      setPackagingOverrides({});
       const metrics = calculatePhysicalMetrics(recipe, inventory);
       if (metrics.gramsPerServing > 0) {
         setTargetGramsInput(metrics.gramsPerServing.toString());
@@ -86,6 +153,8 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
         inventory,
         settings,
         customRatio: mult,
+        packagingStrategy,
+        customPackagingOverrides: packagingOverrides,
       });
     }
 
@@ -97,6 +166,8 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
         settings,
         targetServings,
         targetGramsPerServing: targetGrams,
+        packagingStrategy,
+        customPackagingOverrides: packagingOverrides,
       });
     }
 
@@ -106,8 +177,20 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
       inventory,
       settings,
       targetServings,
+      packagingStrategy,
+      customPackagingOverrides: packagingOverrides,
     });
-  }, [recipe, inventory, settings, mode, targetServings, customMultiplier, targetGramsInput]);
+  }, [
+    recipe,
+    inventory,
+    settings,
+    mode,
+    targetServings,
+    customMultiplier,
+    targetGramsInput,
+    packagingStrategy,
+    packagingOverrides,
+  ]);
 
   if (!recipe || !scaledResult) return null;
 
@@ -141,6 +224,45 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
   const handleGramsChange = (valStr: string) => {
     setTargetGramsInput(valStr);
     setMode('grams');
+  };
+
+  // Step button handlers (increment / decrement)
+  const handleStepPortions = (delta: number) => {
+    setMode('portions');
+    const current = parseFloat(customServingsInput) || targetServings || 1;
+    const next = Math.max(0.5, Math.round((current + delta) * 10) / 10);
+    setTargetServings(next);
+    setCustomServingsInput(next.toString());
+  };
+
+  const handleStepMultiplier = (delta: number) => {
+    setMode('multiplier');
+    const current = parseFloat(customMultiplier) || 1;
+    const next = Math.max(0.05, Math.round((current + delta) * 100) / 100);
+    setCustomMultiplier(next.toString());
+    const nextServings = Math.round(baseYield * next * 100) / 100;
+    setTargetServings(nextServings);
+  };
+
+  const handleStepGrams = (delta: number) => {
+    setMode('grams');
+    const fallback = physicalMetrics?.gramsPerServing || 50;
+    const current = parseFloat(targetGramsInput) || fallback;
+    const next = Math.max(1, Math.round((current + delta) * 10) / 10);
+    setTargetGramsInput(next.toString());
+  };
+
+  // Packaging stepper handler
+  const handleStepPackaging = (itemId: string, delta: number, currentQty: number) => {
+    setPackagingOverrides((prev) => {
+      const existing = typeof prev[itemId] === 'number' ? prev[itemId] : currentQty;
+      const next = Math.max(0, existing + delta);
+      return { ...prev, [itemId]: next };
+    });
+  };
+
+  const handleResetPackaging = () => {
+    setPackagingOverrides({});
   };
 
   // Copy scaled ingredients text
@@ -214,12 +336,51 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
     window.print();
   };
 
+  const footerContent = (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+      <div className="flex items-center gap-2 w-full sm:w-auto">
+        <Button
+          variant="outline"
+          size="sm"
+          icon={copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+          onClick={handleCopyRecipe}
+          className="w-full sm:w-auto"
+        >
+          {copied ? 'Copied to Clipboard!' : 'Copy Prep List'}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Printer size={16} />}
+          onClick={handlePrint}
+          className="hidden sm:inline-flex"
+        >
+          Print Sheet
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-2 w-full sm:w-auto">
+        <Button
+          variant="primary"
+          size="sm"
+          icon={savedSuccess ? <Check size={16} /> : <Plus size={16} />}
+          onClick={handleSaveAsNewRecipe}
+          className="w-full sm:w-auto"
+        >
+          {savedSuccess ? 'Saved to Recipes!' : 'Save as New Scaled Recipe'}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Recipe Portion & Ratio Scaler"
       maxWidth="3xl"
+      footer={footerContent}
     >
       <div className="space-y-5 print:p-0">
         {/* Top Info Banner */}
@@ -266,9 +427,9 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
                   key={p}
                   type="button"
                   onClick={() => handleSelectPreset(p)}
-                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center gap-1.5 shadow-2xs cursor-pointer ${
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all duration-150 flex items-center gap-1.5 shadow-2xs cursor-pointer select-none active:scale-95 ${
                     isSelected
-                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/20 scale-105'
+                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25 ring-2 ring-amber-600 ring-offset-2'
                       : 'bg-slate-100 hover:bg-amber-100 text-slate-700 border border-slate-200 hover:border-amber-300'
                   }`}
                 >
@@ -279,62 +440,38 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
             })}
           </div>
 
-          {/* Advanced / Fine-tune Row */}
+          {/* Advanced Stepper Controls with Dedicated Increment / Decrement Buttons */}
           <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">
-                Custom Portions
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.1"
-                  value={customServingsInput}
-                  onChange={(e) => handleCustomServingsChange(e.target.value)}
-                  className="w-full text-xs sm:text-sm font-bold rounded-xl border border-slate-300 py-1.5 px-3 bg-slate-50/50 focus:bg-white focus:border-amber-500 focus:outline-none"
-                  placeholder="e.g. 5"
-                />
-                <span className="absolute right-3 top-2 text-[10px] text-slate-400 font-medium">portions</span>
-              </div>
-            </div>
+            <StepperControl
+              label="Custom Portions"
+              value={customServingsInput}
+              onChange={handleCustomServingsChange}
+              onStepDown={() => handleStepPortions(-1)}
+              onStepUp={() => handleStepPortions(1)}
+              suffix="portions"
+              placeholder="e.g. 5"
+            />
 
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1">
-                Batch Multiplier Ratio
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.05"
-                  value={customMultiplier}
-                  onChange={(e) => handleMultiplierChange(e.target.value)}
-                  className="w-full text-xs sm:text-sm font-bold rounded-xl border border-slate-300 py-1.5 px-3 bg-slate-50/50 focus:bg-white focus:border-amber-500 focus:outline-none"
-                  placeholder="e.g. 1.5"
-                />
-                <span className="absolute right-3 top-2 text-[10px] text-slate-400 font-medium">x ratio</span>
-              </div>
-            </div>
+            <StepperControl
+              label="Batch Multiplier"
+              value={customMultiplier}
+              onChange={handleMultiplierChange}
+              onStepDown={() => handleStepMultiplier(-0.1)}
+              onStepUp={() => handleStepMultiplier(0.1)}
+              suffix="x ratio"
+              placeholder="e.g. 1.5"
+            />
 
-            <div>
-              <label className="text-xs font-semibold text-slate-600 block mb-1 flex items-center justify-between">
-                <span>Grams / Portion</span>
-                <span className="text-[10px] text-amber-700 font-normal">Auto-adjust</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  value={targetGramsInput}
-                  onChange={(e) => handleGramsChange(e.target.value)}
-                  placeholder={physicalMetrics?.gramsPerServing ? `${physicalMetrics.gramsPerServing}g` : 'N/A'}
-                  className="w-full text-xs sm:text-sm font-bold rounded-xl border border-slate-300 py-1.5 px-3 bg-slate-50/50 focus:bg-white focus:border-amber-500 focus:outline-none"
-                />
-                <span className="absolute right-3 top-2 text-[10px] text-slate-400 font-medium">g / person</span>
-              </div>
-            </div>
+            <StepperControl
+              label="Grams / Portion"
+              sublabel="Auto-adjusts"
+              value={targetGramsInput}
+              onChange={handleGramsChange}
+              onStepDown={() => handleStepGrams(-5)}
+              onStepUp={() => handleStepGrams(5)}
+              suffix="g / pers"
+              placeholder={physicalMetrics?.gramsPerServing ? `${physicalMetrics.gramsPerServing}g` : 'N/A'}
+            />
           </div>
         </div>
 
@@ -479,69 +616,124 @@ export const PortionRatioScalerModal: React.FC<PortionRatioScalerModalProps> = (
           </div>
         </div>
 
-        {/* Collapsible Packaging Section if any */}
+        {/* Packaging & Boxes Section with Steppers & Mode Toggle */}
         {scaledResult.packaging.length > 0 && (
-          <div className="border border-slate-200 rounded-2xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowPackagingDetails((prev) => !prev)}
-              className="w-full p-3 bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <span>Packaging & Boxes ({scaledResult.packaging.length} items • {formatCurrency(scaledResult.packagingCost, settings.currencySymbol)})</span>
-              {showPackagingDetails ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-            </button>
+          <div className="border border-indigo-200/80 bg-indigo-50/40 rounded-2xl p-4 space-y-3 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                  <span>Packaging & Boxes</span>
+                  <span className="text-xs font-bold px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full">
+                    {formatCurrency(scaledResult.packagingCost, settings.currencySymbol)}
+                  </span>
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {packagingStrategy === 'individual'
+                    ? `Individual Portions: 1 box & sticker per person (${scaledResult.targetServings} portions = ${scaledResult.targetServings} boxes & stickers)`
+                    : `Shared Packaging: multi-portion capacity per box`}
+                </p>
+              </div>
 
-            {showPackagingDetails && (
-              <div className="p-3 bg-white divide-y divide-slate-100 text-xs">
-                {scaledResult.packaging.map((pkg) => (
-                  <div key={pkg.itemId} className="py-1.5 flex items-center justify-between">
-                    <span className="font-medium text-slate-700">{pkg.itemName}</span>
-                    <span className="text-slate-500">
-                      {pkg.scaledQty} pcs • <strong className="text-slate-800">{formatCurrency(pkg.scaledCost, settings.currencySymbol)}</strong>
+              {/* Packaging Mode Selector */}
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 self-start sm:self-auto shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPackagingStrategy('individual');
+                    setPackagingOverrides({});
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
+                    packagingStrategy === 'individual'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Each person gets their own box & sticker (1:1 with portion count)"
+                >
+                  Individual ({scaledResult.targetServings} pcs)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPackagingStrategy('shared');
+                    setPackagingOverrides({});
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
+                    packagingStrategy === 'shared'
+                      ? 'bg-indigo-600 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Pack together in shared capacity boxes"
+                >
+                  Shared Boxes
+                </button>
+
+                {Object.keys(packagingOverrides).length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleResetPackaging}
+                    className="px-2 py-1 text-[10px] text-slate-400 hover:text-rose-600 font-semibold cursor-pointer"
+                    title="Reset to calculated counts"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Packaging Items List with Direct Increment/Decrement Steppers */}
+            <div className="space-y-2 bg-white rounded-xl p-2.5 border border-slate-200/80 divide-y divide-slate-100">
+              {scaledResult.packaging.map((pkg) => (
+                <div
+                  key={pkg.itemId}
+                  className="flex items-center justify-between gap-3 pt-2 first:pt-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <span className="font-semibold text-slate-800 block truncate text-xs sm:text-sm">
+                      {pkg.itemName}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Unit cost: {formatCurrency(pkg.scaledCost / Math.max(pkg.scaledQty, 1), settings.currencySymbol)}
                     </span>
                   </div>
-                ))}
-              </div>
-            )}
+
+                  {/* Stepper Buttons for each packaging item */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                      <button
+                        type="button"
+                        onClick={() => handleStepPackaging(pkg.itemId, -1, pkg.scaledQty)}
+                        className="px-2 py-1 text-slate-600 hover:text-amber-800 hover:bg-amber-100 active:bg-amber-200 cursor-pointer select-none border-r border-slate-200"
+                        title={`Decrease ${pkg.itemName}`}
+                        aria-label={`Decrease ${pkg.itemName}`}
+                      >
+                        <Minus size={13} className="stroke-[2.5]" />
+                      </button>
+
+                      <span className="px-2.5 text-xs font-black text-slate-800 min-w-[34px] text-center">
+                        {pkg.scaledQty}
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStepPackaging(pkg.itemId, 1, pkg.scaledQty)}
+                        className="px-2 py-1 text-slate-600 hover:text-amber-800 hover:bg-amber-100 active:bg-amber-200 cursor-pointer select-none border-l border-slate-200"
+                        title={`Increase ${pkg.itemName}`}
+                        aria-label={`Increase ${pkg.itemName}`}
+                      >
+                        <Plus size={13} className="stroke-[2.5]" />
+                      </button>
+                    </div>
+
+                    <span className="font-bold text-slate-800 min-w-[55px] text-right text-xs sm:text-sm">
+                      {formatCurrency(pkg.scaledCost, settings.currencySymbol)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
-
-        {/* Action Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button
-              variant="outline"
-              size="sm"
-              icon={copied ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
-              onClick={handleCopyRecipe}
-              className="w-full sm:w-auto"
-            >
-              {copied ? 'Copied to Clipboard!' : 'Copy Prep List'}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Printer size={16} />}
-              onClick={handlePrint}
-              className="hidden sm:inline-flex"
-            >
-              Print Sheet
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Button
-              variant="primary"
-              size="sm"
-              icon={savedSuccess ? <Check size={16} /> : <Plus size={16} />}
-              onClick={handleSaveAsNewRecipe}
-              className="w-full sm:w-auto"
-            >
-              {savedSuccess ? 'Saved to Recipes!' : 'Save as New Scaled Recipe'}
-            </Button>
-          </div>
-        </div>
       </div>
     </Modal>
   );

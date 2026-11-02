@@ -7,9 +7,13 @@ export interface RecipeIngredient {
   cost: number; // Auto-calculated total cost of this ingredient item in recipe
 }
 
+export type PackagingScalingType = 'per_portion' | 'capacity' | 'fixed';
+
 export interface RecipePackaging {
   itemId: string;
   quantity: number; // Number of boxes, sheets, stickers used per batch
+  scalingType?: PackagingScalingType; // 'per_portion' (1 per portion), 'capacity' (shared box), 'fixed' (1 per batch)
+  capacity?: number; // Portions per box (e.g. 1, 2, 4, 6)
   cost: number;
 }
 

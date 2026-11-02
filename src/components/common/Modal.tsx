@@ -7,6 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  footer?: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
 }
 
@@ -15,6 +16,7 @@ export const Modal: React.FC<ModalProps> = ({
   onClose,
   title,
   children,
+  footer,
   maxWidth = 'md',
 }) => {
   const scrollYRef = useRef<number>(0);
@@ -77,12 +79,12 @@ export const Modal: React.FC<ModalProps> = ({
           className={`relative w-[92vw] sm:w-full ${maxWidthClasses[maxWidth]} max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scale-up`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header (sticky so it remains visible while body scrolls) */}
+          {/* Header */}
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-amber-50/60 shrink-0 sticky top-0 z-10">
             <h3 className="text-base font-bold text-slate-800">{title}</h3>
             <button
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 p-1.5 rounded-full transition-colors"
+              className="text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 p-1.5 rounded-full transition-colors cursor-pointer"
               aria-label="Close modal"
             >
               <X size={20} />
@@ -90,7 +92,14 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Scrollable content */}
-          <div className="p-5 overflow-y-auto space-y-4 flex-1">{children}</div>
+          <div className="p-5 overflow-y-auto space-y-4 flex-1 min-h-0">{children}</div>
+
+          {/* Fixed Modal Footer */}
+          {footer && (
+            <div className="px-5 py-3.5 border-t border-slate-200 bg-white shrink-0 rounded-b-2xl">
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </div>

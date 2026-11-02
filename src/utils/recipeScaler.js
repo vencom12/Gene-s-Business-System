@@ -1,4 +1,4 @@
- function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } }
+ function _nullishCoalesce(lhs, rhsFn) { if (lhs != null) { return lhs; } else { return rhsFn(); } } function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
 
 
 import { calculateItemCost } from './unitConversions';
@@ -137,6 +137,8 @@ export function calculatePhysicalMetrics(
 
 
 
+
+
 /**
  * Calculates scaled ingredients, physical portions, and adjusted prices/costs based on ratio.
  */
@@ -151,6 +153,8 @@ export function scaleRecipe(options) {
     targetMlPerServing,
     scaleLabor = true,
     scalePackaging = true,
+    packagingStrategy = 'auto',
+    customPackagingOverrides,
   } = options;
 
   const baseServings = Math.max(recipe.servingCount || recipe.yieldQuantity || 1, 0.1);
@@ -222,17 +226,82 @@ export function scaleRecipe(options) {
   let packagingCost = 0;
   const scaledPackaging = recipe.packaging.map((rp) => {
     const item = inventory.find((inv) => inv.id === rp.itemId);
-    // If packaging scales with servings, compute scaled count
-    const rawScaled = scalePackaging ? rp.quantity * ratio : rp.quantity;
-    const scaledQty = Math.max(Math.ceil(rawScaled), 1);
+    const itemNameLower = (_optionalChain([item, 'optionalAccess', _ => _.name]) || '').toLowerCase();
+    const isBox =
+      itemNameLower.includes('box') ||
+      itemNameLower.includes('container') ||
+      itemNameLower.includes('clamshell') ||
+      itemNameLower.includes('tub') ||
+      itemNameLower.includes('pouch');
+    const isSticker =
+      itemNameLower.includes('sticker') ||
+      itemNameLower.includes('label') ||
+      itemNameLower.includes('tag');
+
+    let scaledQty;
+
+    // 1. Check if user provided manual count override in the UI
+    if (customPackagingOverrides && typeof customPackagingOverrides[rp.itemId] === 'number') {
+      scaledQty = Math.max(0, Math.round(customPackagingOverrides[rp.itemId]));
+    } else if (!scalePackaging) {
+      scaledQty = rp.quantity;
+    } else if (rp.scalingType === 'fixed') {
+      // Fixed items (e.g. 1 paper shopping bag per order)
+      scaledQty = rp.quantity;
+    } else if (packagingStrategy === 'individual' || rp.scalingType === 'per_portion') {
+      // Individual portion packaging: 1 box/sticker per portion (or base qty proportional to servings)
+      const perPortionRatio = rp.quantity > 0 && baseServings > 0 ? rp.quantity / baseServings : 1;
+      scaledQty = Math.max(1, Math.ceil(resolvedTargetServings * perPortionRatio));
+    } else if (packagingStrategy === 'shared' || rp.scalingType === 'capacity') {
+      // Shared box packaging: calculate capacity per box
+      const capacity =
+        rp.capacity ||
+        (rp.quantity > 0 ? Math.max(1, Math.round(baseServings / rp.quantity)) : 1);
+      const boxesNeeded = Math.max(1, Math.ceil(resolvedTargetServings / capacity));
+      if (isBox) {
+        scaledQty = boxesNeeded;
+      } else if (isSticker) {
+        scaledQty = boxesNeeded; // 1 sticker per box
+      } else {
+        scaledQty = Math.max(1, Math.ceil(rp.quantity * ratio));
+      }
+    } else {
+      // 'auto' strategy:
+      // If base recipe packaging quantity matches base servings (e.g. 4 portions and 4 boxes), it is 1:1 individual!
+      if (Math.abs(rp.quantity - baseServings) < 0.1) {
+        scaledQty = Math.max(1, Math.round(resolvedTargetServings));
+      } else if (isBox) {
+        const capacity =
+          rp.capacity ||
+          (rp.quantity > 0 ? Math.max(1, Math.round(baseServings / rp.quantity)) : 1);
+        scaledQty = Math.max(1, Math.ceil(resolvedTargetServings / capacity));
+      } else if (isSticker) {
+        const boxItem = recipe.packaging.find((p) => {
+          const inv = inventory.find((i) => i.id === p.itemId);
+          const name = (_optionalChain([inv, 'optionalAccess', _2 => _2.name]) || '').toLowerCase();
+          return name.includes('box') || name.includes('container') || name.includes('clamshell');
+        });
+        if (boxItem) {
+          const boxCap =
+            boxItem.capacity ||
+            (boxItem.quantity > 0 ? Math.max(1, Math.round(baseServings / boxItem.quantity)) : 1);
+          scaledQty = Math.max(1, Math.ceil(resolvedTargetServings / boxCap));
+        } else {
+          scaledQty = Math.max(1, Math.ceil(rp.quantity * ratio));
+        }
+      } else {
+        scaledQty = Math.max(1, Math.ceil(rp.quantity * ratio));
+      }
+    }
 
     const unitCost = item ? item.unitCost : 0;
     const baseUnit = item ? item.baseUnit : 'pcs';
     const scaledCost = item
       ? calculateItemCost(scaledQty, 'pcs', unitCost, baseUnit)
-      : (rp.cost || 0) * ratio;
+      : (rp.cost || 0) * (scaledQty / Math.max(rp.quantity, 1));
 
-    const originalCost = rp.cost || (item ? calculateItemCost(rp.quantity, 'pcs', unitCost, baseUnit) : 0);
+    const originalCost =
+      rp.cost || (item ? calculateItemCost(rp.quantity, 'pcs', unitCost, baseUnit) : 0);
     packagingCost += scaledCost;
 
     return {

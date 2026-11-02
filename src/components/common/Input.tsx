@@ -35,13 +35,14 @@ export const Input: React.FC<InputProps> = ({
         )}
         <input
           id={inputId}
+          step={props.type === 'number' && !props.step ? 'any' : props.step}
           className={`w-full rounded-xl border border-slate-300 bg-white py-2.5 px-3 text-slate-800 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all ${
             prefixSymbol ? 'pl-8' : ''
-          } ${suffixSymbol ? 'pr-12' : ''} ${error ? 'border-rose-500 ring-1 ring-rose-500' : ''} ${className}`}
+          } ${suffixSymbol ? 'pr-14 no-spinner' : ''} ${error ? 'border-rose-500 ring-1 ring-rose-500' : ''} ${className}`}
           {...props}
         />
         {suffixSymbol && (
-          <span className="absolute right-3 text-slate-500 text-xs font-medium select-none pointer-events-none">
+          <span className="absolute right-3 text-slate-500 text-xs font-semibold select-none pointer-events-none">
             {suffixSymbol}
           </span>
         )}
