@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, ChefHat, Trash2, Edit2 } from 'lucide-react';
+import { Plus, ChefHat, Trash2, Edit2, Scale } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import type { Recipe } from '../../types/recipe';
 import { formatCurrency, calculateSellingPriceFromMargin } from '../../utils/currency';
+import { calculatePhysicalMetrics } from '../../utils/recipeScaler';
 import { RecipeEditor } from './RecipeEditor';
+import { PortionRatioScalerModal } from './PortionRatioScalerModal';
 import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { Card } from '../common/Card';
@@ -15,6 +17,7 @@ export const RecipeList: React.FC = () => {
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+  const [scalingRecipe, setScalingRecipe] = useState<Recipe | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Pagination state
@@ -112,22 +115,31 @@ export const RecipeList: React.FC = () => {
           const suggestedPricePerUnit =
             recipe.yieldQuantity > 0 ? suggestedTotalPrice / recipe.yieldQuantity : 0;
 
+          const metrics = calculatePhysicalMetrics(recipe);
+
           return (
-            <Card key={recipe.id} className="flex flex-col justify-between space-y-4">
+            <Card key={recipe.id} className="flex flex-col justify-between space-y-4 hover:border-amber-300 transition-all">
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <Badge variant="emerald">{recipe.targetProfitMargin}% Margin Target</Badge>
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => setScalingRecipe(recipe)}
+                      className="p-1.5 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                      title="Scale Portions (1, 2, 3, 4 persons...)"
+                    >
+                      <Scale size={16} />
+                    </button>
+                    <button
                       onClick={() => handleOpenEdit(recipe)}
-                      className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                       title="Edit Recipe"
                     >
                       <Edit2 size={16} />
                     </button>
                     <button
                       onClick={() => deleteRecipe(recipe.id)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                       title="Delete Recipe"
                     >
                       <Trash2 size={16} />
@@ -139,6 +151,12 @@ export const RecipeList: React.FC = () => {
                 <p className="text-xs text-slate-500 font-medium">
                   Yield: {recipe.yieldQuantity} {recipe.yieldUnit} • {recipe.category}
                 </p>
+                {metrics.totalGrams > 0 && (
+                  <p className="text-[11px] text-amber-800 font-semibold mt-0.5 flex items-center gap-1">
+                    <Scale size={12} className="text-amber-600" />
+                    <span>~{metrics.totalGrams}g batch ({metrics.gramsPerServing}g / portion)</span>
+                  </p>
+                )}
               </div>
 
               <div className="bg-amber-50/60 rounded-xl p-3 border border-amber-100 space-y-2 text-xs">
@@ -164,14 +182,23 @@ export const RecipeList: React.FC = () => {
                 </div>
               </div>
 
-              <Button
-                variant="outline"
-                size="sm"
-                fullWidth
-                onClick={() => handleOpenEdit(recipe)}
-              >
-                View Costing Breakdown
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={<Scale size={15} className="text-amber-600" />}
+                  onClick={() => setScalingRecipe(recipe)}
+                >
+                  Scale Portions
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleOpenEdit(recipe)}
+                >
+                  Cost Details
+                </Button>
+              </div>
             </Card>
           );
         })}
@@ -192,6 +219,12 @@ export const RecipeList: React.FC = () => {
         itemsPerPage={itemsPerPage}
         onPageChange={(page) => setCurrentPage(page)}
         onItemsPerPageChange={(num) => setItemsPerPage(num)}
+      />
+
+      <PortionRatioScalerModal
+        recipe={scalingRecipe}
+        isOpen={!!scalingRecipe}
+        onClose={() => setScalingRecipe(null)}
       />
     </div>
   );

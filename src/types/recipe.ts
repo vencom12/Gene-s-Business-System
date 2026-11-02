@@ -31,7 +31,10 @@ export interface Recipe {
   name: string;
   category: string; // e.g. 'Cakes', 'Cookies', 'Cupcakes', 'Pastries'
   yieldQuantity: number; // How many units this recipe yields (e.g., 12 cupcakes, 1 cake)
-  yieldUnit: string; // 'pcs', 'batch', 'cakes', 'boxes'
+  yieldUnit: string; // 'pcs', 'batch', 'cakes', 'boxes', 'servings'
+  servingCount?: number; // Base number of people / portions (defaults to yieldQuantity)
+  portionSize?: number; // Nominal portion size (e.g. 250)
+  portionUnit?: 'g' | 'ml' | 'oz' | 'pcs'; // Unit for portion size ('g' or 'ml')
   prepTimeMinutes: number; // Preparation time in minutes
   bakeTimeMinutes: number; // Baking time in minutes
   laborHours: number; // Total labor hours for batch (baking + decorating)

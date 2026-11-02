@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Save, Plus, Trash2, ShoppingBag } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, ShoppingBag, Scale } from 'lucide-react';
 import type { CustomerOrder, OrderItem, OrderStatus } from '../../types/order';
+import type { Recipe } from '../../types/recipe';
 import { useApp } from '../../context/AppContext';
 import { calculateSellingPriceFromMargin, formatCurrency } from '../../utils/currency';
+import { PortionRatioScalerModal } from '../recipes/PortionRatioScalerModal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
@@ -26,6 +28,7 @@ export const OrderEditor: React.FC<OrderEditorProps> = ({ orderToEdit, onBack })
   const [notes, setNotes] = useState(orderToEdit?.notes || '');
 
   const [orderItems, setOrderItems] = useState<OrderItem[]>(orderToEdit?.items || []);
+  const [inspectingRecipe, setInspectingRecipe] = useState<Recipe | null>(null);
 
   const handleAddItem = () => {
     if (recipes.length === 0) return;
@@ -271,11 +274,23 @@ export const OrderEditor: React.FC<OrderEditorProps> = ({ orderToEdit, onBack })
                     </span>
                   </div>
 
-                  <div className="col-span-1 flex justify-end">
+                  <div className="col-span-1 flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const r = recipes.find((x) => x.id === item.recipeId);
+                        if (r) setInspectingRecipe(r);
+                      }}
+                      className="p-1 text-slate-400 hover:text-amber-600 rounded transition-colors"
+                      title="View Portion Scaler & Ingredients"
+                    >
+                      <Scale size={16} />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setOrderItems((prev) => prev.filter((_, i) => i !== index))}
-                      className="text-slate-400 hover:text-rose-600"
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                      title="Remove Item"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -321,6 +336,12 @@ export const OrderEditor: React.FC<OrderEditorProps> = ({ orderToEdit, onBack })
           </div>
         </div>
       </div>
+
+      <PortionRatioScalerModal
+        recipe={inspectingRecipe}
+        isOpen={!!inspectingRecipe}
+        onClose={() => setInspectingRecipe(null)}
+      />
     </form>
   );
 };

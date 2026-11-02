@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Save, ArrowLeft, ChefHat } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Trash2, Save, ArrowLeft, ChefHat, Scale, Users } from 'lucide-react';
 import type { Recipe, RecipeIngredient, RecipePackaging } from '../../types/recipe';
 import type { UnitType } from '../../types/ingredient';
 import { useApp } from '../../context/AppContext';
 import { calculateItemCost } from '../../utils/unitConversions';
+import { calculatePhysicalMetrics } from '../../utils/recipeScaler';
 import { MarginCalculator } from './MarginCalculator';
 import { RecipeCostingBreakdown } from './RecipeCostingBreakdown';
+import { PortionRatioScalerModal } from './PortionRatioScalerModal';
 import { Input } from '../common/Input';
 import { Select } from '../common/Select';
 import { Button } from '../common/Button';
@@ -24,6 +26,10 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
   const [category, setCategory] = useState(recipeToEdit?.category || 'Cakes');
   const [yieldQuantity, setYieldQuantity] = useState<string>(recipeToEdit?.yieldQuantity.toString() || '12');
   const [yieldUnit, setYieldUnit] = useState(recipeToEdit?.yieldUnit || 'cupcakes');
+  const [servingCount, setServingCount] = useState<string>(
+    recipeToEdit?.servingCount?.toString() || recipeToEdit?.yieldQuantity.toString() || '4'
+  );
+  const [isScalerOpen, setIsScalerOpen] = useState(false);
   const [prepTimeMinutes] = useState<string>(recipeToEdit?.prepTimeMinutes.toString() || '30');
   const [bakeTimeMinutes] = useState<string>(recipeToEdit?.bakeTimeMinutes.toString() || '20');
   const [laborHours, setLaborHours] = useState<string>(recipeToEdit?.laborHours.toString() || '1.0');
@@ -98,6 +104,8 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
       return { ...rp, cost };
     });
 
+    const servingCountNum = parseFloat(servingCount) || yieldQtyNum;
+
     if (recipeToEdit) {
       updateRecipe({
         ...recipeToEdit,
@@ -105,6 +113,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
         category,
         yieldQuantity: yieldQtyNum,
         yieldUnit,
+        servingCount: servingCountNum,
         prepTimeMinutes: parseInt(prepTimeMinutes) || 0,
         bakeTimeMinutes: parseInt(bakeTimeMinutes) || 0,
         laborHours: laborHoursNum,
@@ -121,6 +130,7 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
         category,
         yieldQuantity: yieldQtyNum,
         yieldUnit,
+        servingCount: servingCountNum,
         prepTimeMinutes: parseInt(prepTimeMinutes) || 0,
         bakeTimeMinutes: parseInt(bakeTimeMinutes) || 0,
         laborHours: laborHoursNum,
@@ -138,6 +148,57 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
 
     onBack();
   };
+
+  const previewRecipe: Recipe = useMemo(() => {
+    const servingCountNum = parseFloat(servingCount) || yieldQtyNum;
+    return {
+      id: recipeToEdit?.id || 'temp-draft',
+      name: name.trim() || 'Draft Recipe',
+      category,
+      yieldQuantity: yieldQtyNum,
+      yieldUnit,
+      servingCount: servingCountNum,
+      prepTimeMinutes: parseInt(prepTimeMinutes) || 0,
+      bakeTimeMinutes: parseInt(bakeTimeMinutes) || 0,
+      laborHours: laborHoursNum,
+      overheadCostPerBatch: overheadCost,
+      targetProfitMargin,
+      ingredients: recipeIngredients.map((ri) => {
+        const item = inventory.find((i) => i.id === ri.itemId);
+        const cost = item ? calculateItemCost(ri.quantity, ri.unit, item.unitCost, item.baseUnit) : 0;
+        return { ...ri, cost };
+      }),
+      packaging: recipePackaging.map((rp) => {
+        const item = inventory.find((i) => i.id === rp.itemId);
+        const cost = item ? calculateItemCost(rp.quantity, 'pcs', item.unitCost, item.baseUnit) : 0;
+        return { ...rp, cost };
+      }),
+      notes,
+      createdAt: recipeToEdit?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  }, [
+    recipeToEdit,
+    name,
+    category,
+    yieldQtyNum,
+    yieldUnit,
+    servingCount,
+    prepTimeMinutes,
+    bakeTimeMinutes,
+    laborHoursNum,
+    overheadCost,
+    targetProfitMargin,
+    recipeIngredients,
+    recipePackaging,
+    notes,
+    inventory,
+  ]);
+
+  const draftMetrics = useMemo(
+    () => calculatePhysicalMetrics(previewRecipe, inventory),
+    [previewRecipe, inventory]
+  );
 
   return (
     <form onSubmit={handleSave} className="space-y-6 pb-20 md:pb-6 animate-fade-in">
@@ -181,14 +242,19 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
               />
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <Input
                 label="Batch Yield"
                 type="number"
                 step="any"
                 min="0.1"
                 value={yieldQuantity}
-                onChange={(e) => setYieldQuantity(e.target.value)}
+                onChange={(e) => {
+                  setYieldQuantity(e.target.value);
+                  if (!recipeToEdit?.servingCount) {
+                    setServingCount(e.target.value);
+                  }
+                }}
                 required
               />
 
@@ -198,6 +264,17 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
                 value={yieldUnit}
                 onChange={(e) => setYieldUnit(e.target.value)}
                 required
+              />
+
+              <Input
+                label="Servings (Persons)"
+                type="number"
+                step="0.5"
+                min="0.1"
+                suffixSymbol="pers"
+                value={servingCount}
+                onChange={(e) => setServingCount(e.target.value)}
+                helperText="For portion scaling"
               />
 
               <Input
@@ -221,6 +298,34 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
                 onChange={(e) => setOverheadCostPerBatch(e.target.value)}
                 helperText="Gas / electricity"
               />
+            </div>
+
+            {/* Quick Portion & Weight Preview Banner */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-amber-50/70 rounded-xl border border-amber-200/70 text-xs">
+              <div className="flex items-center gap-2">
+                <Scale size={16} className="text-amber-700 shrink-0" />
+                <span className="text-slate-700">
+                  {draftMetrics.totalGrams > 0 ? (
+                    <>
+                      Total Batch Weight: <strong className="text-slate-900">~{draftMetrics.totalGrams}g</strong>
+                      {draftMetrics.totalMl > 0 ? ` + ~${draftMetrics.totalMl}ml liquid` : ''} •{' '}
+                      Portion Size: <strong className="text-amber-800">~{draftMetrics.gramsPerServing}g / person</strong>
+                    </>
+                  ) : (
+                    <span className="text-slate-500">Add ingredients below to see portion weight (grams/ml).</span>
+                  )}
+                </span>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                icon={<Users size={14} className="text-amber-600" />}
+                onClick={() => setIsScalerOpen(true)}
+              >
+                Test Portion Scaling (1, 2, 3, 4p)
+              </Button>
             </div>
 
             <Input
@@ -457,6 +562,12 @@ export const RecipeEditor: React.FC<RecipeEditorProps> = ({ recipeToEdit, onBack
           />
         </div>
       </div>
+
+      <PortionRatioScalerModal
+        recipe={previewRecipe}
+        isOpen={isScalerOpen}
+        onClose={() => setIsScalerOpen(false)}
+      />
     </form>
   );
 };
